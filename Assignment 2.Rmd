@@ -1,0 +1,228 @@
+---
+title: "Assignment 2"
+author: "Devan Goto"
+date: "January 26, 2017"
+output: html_document
+---
+
+# Assignment 2
+
+## Decision trees
+
+### Other Splitting Criteria
+1. There is another measure of **cost** used as a splitting criterion called **variance reduction**, research this method and then:
+    a. Explain it conceptually
+    #Variance reduction is a splitting criterion for a regression tree.  A regression tree chooses rules to make variances of child nodes as small as possible.  Regression trees typically include target variables that are continuous (real numbers).  “Variance reduction of a node is the total reduction of variance of the target variable x due to the split at this node (Wiki).”  
+    
+    b. Provide a formula for the calculation
+    # yˆ =(1/c) ∑_(i=1)^c▒yi
+    
+    c. Provide an example of a type of data and a question when it would be appropriate to use this criterion when building a tree to predict
+    #Since this is used in regression trees this would best be used when we are trying to predict an outcome that isn’t simply binary or classifiable.  An example could be predicting the price of something (i.e. car) given other variables (i.e. horsepower and model).  
+
+### Practice Reading R Documentation
+2. Download the R documentation for the package [rpart](https://cran.r-project.org/web/packages/rpart/rpart.pdf). Identify paramaters that you can alter to *control* attributes of the stopping criterion. What are they?
+
+    #One example is the complexity paramter (cp). cp serves "to save comuting time by pruning off splits that are obviously not worthwhile.  The user informs the program that any split which does not improve the fit by cp will likely be pruned off by cross-validation, and that hence the program need not pursue it (cran pdf)."  A few others are minsplit, minbucket, maxcompete, and maxsurrogate. 
+    
+
+### Practice Building Trees
+
+3. Download the Assistments data set available [here](http://users.wpi.edu/~yutaowang/data/non_skill_builder_data_new.csv).
+   
+    a. Look at the code book below, choose variables from teh data set that you think will have an impact on student performance *at the level of the student*. Make a new data set with these variables
+    
+```{}
+
+A1<-read.csv("non_skill_builder_data_new.csv",header=TRUE,sep=",")
+
+A2<-A1
+
+A2$user_id<- NULL
+
+install.packages("dplyr")
+library(dplyr)
+
+install.packages("tidyr")
+library(tidyr)
+
+
+#Choose variables that affect student performance at the level of the student. 
+
+Subset1<-dplyr::select(A2,attempt_count,tutor_mode,answer_type,hint_count)
+
+```
+
+    b. Aggregate the data *by student* using your data wrangling skillz making sure that the variables are condensed in a meaningful way
+    
+```{r}
+
+#Focus Variables 
+
+#Condense Answer Type & Tutor Mode to One Group Each
+Z1<-dplyr::filter(Z1,answer_type == "choose_1", tutor_mode == "tutor")
+
+#Each student did multiple problems for questions with similar parameters (tutor mode and answer type). However, each question yielded different scores (correct), hints (hint_count), and attempts (attempt_count).  So we will calculate the mean of each value in accordance to each unique ID. 
+Z2<-Z1 %>% group_by(user_id) %>% summarise(correct=mean(correct),mean_hints=mean(hint_count),mean_attempts=mean(attempt_count))
+
+#Make Data Into Long Format (for ggplot histogram)
+
+Z_long<-gather(Z2, condition, measurement, correct:mean_attempts,factor_key=TRUE)
+
+hist1 = ggplot(Z_long,aes(x=measurement)) + geom_histogram(binwidth = 0.1) + facet_wrap(~condition, scales = "free")
+
+plot(hist1)
+
+```
+
+    c. Create a tree that predicts student performance using rpart
+    
+```{}
+
+install.packages("rpart")
+library(rpart)
+
+#Create Regression Tree (method = "anova"" is for regression trees, and method = "class" is for classification trees)
+
+r.tree1<-rpart(correct ~ mean_hints + mean_attempts, method = "anova", data = Z2)
+
+printcp(r.tree1)
+
+#Everytime I use the text function it appears that my texts/values are getting "cut off" and not showing fully.  Advice?
+
+plot(r.tree1)
+text(r.tree1)
+
+#Create Classification Tree
+
+#Convert "correct" variable in Z2 into binary outcome
+
+Z3<-Z2
+Z3$correct2<-ifelse(Z3$correct >= 0.55, 1, 0)
+c.tree1<-rpart(correct2 ~ mean_hints + mean_attempts, method = "class", data = Z3)
+
+printcp(c.tree1)
+
+plot(c.tree1)
+text(c.tree1)
+
+```
+   
+    d. Change the stopping criterion and splitting function to generate different trees.
+    
+```{}
+
+#Prune.  To avoid overfitting you want to choose a tree size that minimizes the cross validation error, "xerror" printed in "printcp."  Then you choose the cp (complexity parameter, given in "printcp") closest to it.  The minimum xerror will always be the largest tree size, as such I am sure I'm missing something. However, I will choose the cp value that is associated with the highest xerror, where xerror values are very close to one another.
+
+#Prune Regression Tree.  I am choosing to prune at xerror value of 0.62933, which is associated with a cp of 0.022290
+
+printcp(r.tree1)
+
+Variables actually used in tree construction:
+[1] mean_attempts mean_hints   
+
+Root node error: 562.38/7341 = 0.076608
+
+n= 7341 
+
+        CP nsplit rel error  xerror     xstd
+1 0.165601      0   1.00000 1.00007 0.013725
+2 0.114993      1   0.83440 0.83969 0.013463
+3 0.073055      2   0.71941 0.72790 0.013783
+4 0.025525      3   0.64635 0.65816 0.012518
+5 0.022290      4   0.62083 0.62933 0.012468
+6 0.018166      5   0.59854 0.60911 0.012367
+7 0.010612      6   0.58037 0.58125 0.012866
+8 0.010000      7   0.56976 0.58037 0.012923
+
+r.tree2<-prune(r.tree1, cp = 0.022290)
+
+plot(r.tree2)
+text(r.tree2)
+
+#Prune Classification Tree. I am choosing to prune at xerror value of 0.51507, which is associated with a cp of 0.043098
+
+printcp(c.tree1)
+
+Variables actually used in tree construction:
+[1] mean_attempts mean_hints   
+
+Root node error: 3318/7341 = 0.45198
+
+n= 7341 
+
+        CP nsplit rel error  xerror     xstd
+1 0.313743      0   1.00000 1.00000 0.012852
+2 0.175407      1   0.68626 0.68686 0.011948
+3 0.043098      2   0.51085 0.51507 0.010913
+4 0.010000      3   0.46775 0.47619 0.010613
+
+c.tree2<-prune(c.tree1, cp = 0.043098)
+
+plot(c.tree2)
+text(c.tree2)
+
+```
+   
+    e. Which is your best tree, how did you make that determination?
+
+```{}
+
+#Create prediction/probability variable for each tree.  
+
+Z2$prob.r1<-predict(r.tree1,Z2)
+Z2$prob.r2<-predict(r.tree2,Z2)
+
+Z3$prob.c1<-predict(c.tree1,Z3)
+Z3$prob.c2<-predict(c.tree2,Z3)
+
+#First convert correct variable into binary, based on a given threshold (I did this for the classification tree dataset earlier)
+
+Y1<-Z2
+Y1$correct2<-ifelse(Y1$correct >= 0.55, 1, 0)
+
+#Convert all prediction variables into binary based on a given threshold.  
+
+#Last semester we made a table comparing our outcomes (correct) and predicted outcomes (probability of tree being true), but I am unsure how to choose a threshold for doing this.  Thus, I am picking one arbitrarily. 
+
+Y1$prob.r1a<-ifelse(Y1$prob.r1 >=0.5, 1, 0)
+Y1$prob.r2a<-ifelse(Y1$prob.r2 >=0.5, 1, 0)
+
+Z4$prob.c1a<-ifelse(Z4$prob.c1 >=0.22, 1, 0)
+Z4$prob.c2a<-ifelse(Z4$prob.c2 >=0.22, 1, 0)
+
+#Create tables for each tree and calculate accuracy, precision, and recall.  Whichever tree yields the best overall results will be inducted as the best tree.  
+
+#Regression Tree 1 
+table1<-table(Y1$correct2,Y1$prob.r1a)
+table1
+   
+       0    1
+  0 1754 1564
+  1  264 3759
+
+Accuracy: (1754+3759)/(7341) = 0.750987
+Precision: (3759)/(3759+264) = 0.934377
+Recall: (3759)/(3759+1564) = 0.70618
+
+#Regression Tree 2
+
+table2<-table(Y1$correct2,Y1$prob.r2a)
+table2
+   
+       0    1
+  0 1754 1564
+  1  264 3759
+
+Accuracy: (1754+3759)/(7341) = 0.750987
+Precision: (3759)/(3759+264) = 0.934377
+Recall: (3759)/(3759+1564) = 0.70618
+
+#Classification Tree 1 & 2
+
+#When I tried to create a table for my classification trees I had an error because the length of my variables were not the same.  On my data set they are the same, but when I enter them for a table they are not.  I used the length function to check the length and it coroborates this.I have no idea why I have additional values, but it has something to do with my predict function based on my classificatoin tree (it appears that my outcomes have doubled for some unknown reason).  I attempted to solve this by tranforming it into a data frame (as.data.frame) and using na.omit (to get rid of rows with na values), but I was unable to delete the rows with na values.  I have spent hours trying to resolve this, but to no avail.  So I will choose a tree based on what I have.  
+#I was unable to create a diagnostic model for my classification trees.  Thus, I will be choosing my regression tree as my best tree.  I am unsure where my flaw is, but this flaw is leading to me going with my regression tree.  Although my classification tree was flawed, my regression tree yielded decent results in both accuracy and recall, and also yielded a very positive result for precision.  For theses reasons I am choosing my regression tree.  Both regression trees have the same diagnostics, but #2 is pruned.  I am unsure if I chose the optimal point to prune at, but I will go with regression tree 2 in the hope that I chose a good pruning point. 
+
+```
+
+## R Markdown
